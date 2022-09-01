@@ -31,19 +31,18 @@ class Handler(object):
                  'args',
                  'dport',
                  'dstip',
-                 'sport',
-                 'srcip']
+                 'sport']
 
     def __init__(self, args):
         self.args = args
         if self.args.dstport is None:
-            self.args.dstport = random.randint(0, 65535)
+            self.args.dstport = random.randint(0, 65534)
         if self.args.dstip is None:
             self.args.dstip = '127.0.0.1'
-        if self.args.srcport is None:
-            self.args.srcport = random.randint(0, 65535)
-        if self.args.srcip is None:
-            self.args.srcip = '127.0.01'
+        # if self.args.srcport is None:
+        # self.args.srcport = random.randint(0, 65534)
+        # if self.args.srcip is None:
+        #     self.args.srcip = '127.0.0.1'
 
         # self.injSocket = conf.L2socket(iface = interface)
         # self.injSocket = conf.L3socket(iface = interface)
@@ -187,17 +186,17 @@ class Shared(object):
         """Copy from the monitoring NIC and inject to the sniff NIC"""
         if self.args.wired is False:
             sniff(iface = self.args.monnic,
-                  prn = lambda x: sendp(RadioTap(x[Raw].load),
-                                        iface = self.args.snfnic,
-                                        verbose = 0),
+                  prn = lambda x: x.haslayer(Raw) and sendp(RadioTap(x[Raw].load),
+                                  iface = self.args.snfnic,
+                                  verbose = 0),
                   store = 0,
                   filter = self.args.bpf)
         else:
             try:
                 sniff(iface = self.args.monnic,
-                      prn = lambda x: sendp(Ether(x.load),
-                                            iface = self.args.snfnic,
-                                            verbose = 0),
+                      prn = lambda x: x.haslayer(Raw) and sendp(Ether(x[Raw].load),
+                                      iface = self.args.snfnic,
+                                      verbose = 0),
                       store = 0,
                       filter = self.args.bpf)
             except Exception as E:
@@ -232,13 +231,12 @@ if __name__ == '__main__':
     parser.add_argument('--debug', action = 'store_true', help = 'client debug mode')
     parser.add_argument('--dstport', help = 'destination port', required = True)
     parser.add_argument('--dstip', help = 'destination ip', required = True)
-    parser.add_argument('--injnic', help = 'injection nic')
     parser.add_argument('--monnic', help = 'monitoring nic', required = True)
     parser.add_argument('--repeater', action = 'store_true', help = 'Setup the repeater for tap mode')
     parser.add_argument('--snfnic', help = 'sniffing nic')
     parser.add_argument('--srcmac', help = 'source mac')
-    parser.add_argument('--srcport', help = 'source port', required = True)
-    parser.add_argument('--srcip', help = 'source ip', required = True)
+    # parser.add_argument('--srcport', help = 'source port', required = True)
+    # parser.add_argument('--srcip', help = 'source ip', required = True)
     parser.add_argument('--stager', action = 'store_true', help = 'Setup the stager for tap mode')
     parser.add_argument('--wired', action = 'store_true', help = 'wired mode, requires -t')
     parser.add_argument('-c', action = 'store_true', help = 'run as client')
@@ -323,13 +321,14 @@ if __name__ == '__main__':
         if args.c is True:
 
             ### Clean this up more
-            args.bpf = 'udp port {0} and ((src {1} and dst {2}) or (dst {1} and src {2}))'.format(args.srcport, args.srcip, args.dstip)
+            # args.bpf = 'udp port {0} and ((src {1} and dst {2}) or (dst {1} and src {2}))'.format(args.srcport, args.srcip, args.dstip)
+            args.bpf = 'udp port {0} and host {1}'.format(args.dstport, args.dstip)
 
     ## Server
     if args.s is True:
         sniff(iface = args.monnic,
-              prn = lambda x: send(IP(src = args.srcip, dst = args.dstip)/\
-                                   UDP(sport = int(args.srcport), dport = int(args.dstport))/\
+              prn = lambda x: send(IP(dst = args.dstip)/\
+                                   UDP(sport = random.randint(0, 65534), dport = int(args.dstport))/\
                                    Raw(load = x),
                                    verbose = 0),
               store = 0,
@@ -338,9 +337,6 @@ if __name__ == '__main__':
 
     ## Client
     if args.c is True:
-        if args.injnic is None:
-            print('--injnic required with -c')
-            sys.exit(1)
 
         if args.snfnic is None:
             print('--snfnic required with -c')

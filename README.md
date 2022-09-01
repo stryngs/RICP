@@ -45,14 +45,14 @@ python3 -m pip install RESOURCEs/*
 ```
 
 ### Getting started with wired
-As a client
-```
-python3 ./ricp.py --dstport 55000 --srcport 65000 --srcip 192.168.50.51 --dstip 192.168.200.106 -c --monnic wlan0 --injnic wlan1 --snfnic tap0 -t --wired
-```
-
 As a server
 ```
-python3 ./ricp.py --monnic eth0 --dstport 55000 --srcport 65000 --srcip 192.168.50.51 --dstip 192.168.200.106 -s
+python3 ./ricp.py --monnic eth0 --dstport 55000 --dstip 192.168.200.106 -s
+```
+
+As a client
+```
+python3 ./ricp.py --dstport 55000 --dstip 192.168.200.106 -c --monnic wlan0 --snfnic tap0 -t --wired
 ```
 
 With the above done, now interact with tap0
@@ -61,19 +61,19 @@ tcpdump -i tap0
 ```
 
 ### Getting started with wireless
-As a client
-```
-python3 ./ricp.py --dstport 55000 --srcport 65000 --srcip 192.168.50.51 --dstip 192.168.200.106 -c --monnic wlan0 --injnic lo --snfnic wlan2mon
-```
-
 As a server
 ```
-python3 ./ricp.py --dstip 192.168.200.254 --dstport 20001 --srcport 20001 --srcip 192.168.200.150 --monnic wlan1mon -s
+python3 ./ricp.py --dstip 192.168.200.106 --dstport 20001 --monnic wlan1mon -s
 ```
 
-With the above done, now interact with wlan2mon
+As a client
 ```
-tcpdump -i wlan2mon
+python3 ./ricp.py --dstport 20001 --dstip 192.168.200.106 -c --monnic wlan0 --snfnic wlan1mon
+```
+
+With the above done, now interact with wlan1mon
+```
+tcpdump -i wlan1mon
 ```
 
 ### Debugging example
@@ -81,5 +81,5 @@ tcpdump -i wlan2mon
 from IPython import embed
 embed()
 
-%run ./ricp.py --dstport 55000 --srcport 65000 --srcip 192.168.50.51 --dstip 192.168.200.106 -c --monnic wlan0 --injnic lo --snfnic wlan1mon --debug
+%run ./ricp.py --dstport 55000 --srcport 65000 --srcip 192.168.50.51 --dstip 192.168.200.106 -c --monnic wlan0 --snfnic wlan1mon --debug
 ```
