@@ -1,0 +1,37 @@
+## The below bug comes from the end of client mode which breaks the bi-directional pipe concept
+        ## Explanation of the kernel issue where duplicates occur, wlan3mon also
+        """
+        At this point in the code clientSniff is sniffing the traffic from wlan0
+        and relaying it via sendp() to wlan2mon.
+
+        From here a tool such as aircrack-ng or kismet would grab the frames.
+        If the intent had been for the tool to interact on the same NIC as it
+        was sniffing then wlan3mon would have been used as the final relay in
+        cycle.
+
+        Setup the client using IPython:
+        %run ./ricp.py --dstip <IP of the server> --dstport 20007 --monnic wlan0 --srcport 20001 --srcip <IP of the client> -c --snfnic wlan2mon --injnic wlan3mon
+
+        In a different shell launch the following:
+        p = sniff(iface = 'wlan3mon', prn = lambda x: send(IP(src = <IP of the client>, dst = <IP of the server>)/\
+                                                       UDP(sport = 30000, dport = 30001)/\
+                                                       Raw(load = x),
+                                                       verbose = 1),
+              store = 1,
+              count = 1)
+
+        In another shell perform a sendp() to wlan2mon and then wlan3mon, doing
+        so will allow you to replicate the duplicate issue.
+        """
+
+
+        ## Broken due to duplicates
+        # sniff(iface = args.injnic,
+        #       prn = lambda x: send(IP(src = args.srcip, dst = args.dstip)/\
+        #                            UDP(sport = int(args.srcport), dport = int(args.dstport))/\
+        #                            Raw(load = x),
+        #                            verbose = 1),
+        #       lfilter = lambda y: y[Dot11].addr1 == args.srcmac or\
+        #                           y[Dot11].addr2 == args.srcmac or\
+        #                           y[Dot11].addr3 == args.srcmac,
+        #       store = 0)
