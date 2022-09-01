@@ -81,5 +81,5 @@ tcpdump -i wlan1mon
 from IPython import embed
 embed()
 
-%run ./ricp.py --dstport 55000 --srcport 65000 --srcip 192.168.50.51 --dstip 192.168.200.106 -c --monnic wlan0 --snfnic wlan1mon --debug
+%run ./ricp.py --dstport 55000 --dstip 192.168.200.106 -c --monnic wlan0 --snfnic wlan1mon --debug
 ```
