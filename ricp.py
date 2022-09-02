@@ -11,16 +11,31 @@ https://github.com/secdev/scapy/issues/724#
 """
 
 import argparse
+import base64
 import binascii
 import os
+import nacl.secret
+import nacl.utils
+import nacl.pwhash
 import psutil
 import random
 import signal
 import sys
 import time
 from easyThread import Backgrounder
+from easyThread import Backgrounder as LISTENER
+from easyThread import Backgrounder as LISTENERII
+from easyThread import EasyThread as LRET
+from easyThread import Backgrounder as STAGER
+from easyThread import Backgrounder as STAGERII
+from easyThread import EasyThread as SRET
+from easyThread import Backgrounder as REPEATER
+from easyThread import Backgrounder as REPEATERII
+from easyThread import EasyThread as RRET
 from queue import Queue
+from pyDot11 import *
 from scapy.all import *
+
 # from scapy.sendrecv import __gen_send as gs
 
 class Handler(object):
@@ -47,8 +62,8 @@ class Handler(object):
         while True:
             l = self.LR.get()
             if l is not None:
-                print('Listener received')
-                print(l.summary())
+                # print('Listener received')
+                # print(l.summary())
                 try:
                     sendp(l, iface = 'tap1', verbose = 0)
                 except:
@@ -60,8 +75,8 @@ class Handler(object):
         while True:
             s = self.SR.get()
             if s is not None:
-                print('Stager received')
-                print(s.summary())
+                # print('Stager received')
+                # print(s.summary())
                 try:
                     sendp(s, iface = 'tap2', verbose = 0)
                 except:
@@ -70,19 +85,13 @@ class Handler(object):
 
     def repeater(self, work):
         """Listens for inbound on tap2 and then sends to the destination"""
-        # while True:
-        #     r = self.RR.get()
-        #     if r is not None:
-        #         print('Repeater received')
-        #         print(r.summary())
-        #         self.RR.task_done()
         while True:
             r = self.RR.get()
             ### Can enter here too for NIC control via the client.
 
             if r is not None:
-                print('Repeater received')
-                print(r.summary())
+                # print('Repeater received')
+                # print(r.summary())
                 ### This is our entry point for NIC control via the client.
                 self.RR.task_done()
 
@@ -172,35 +181,88 @@ class Handler(object):
 
 
 class Shared(object):
-    __slots__ = ['args']
+    __slots__ = ['args',
+                 'box']
 
-    def __init__(self, args):
+    def __init__(self, args, box):
         self.args = args
+        self.box = box
+
+
+    def wiredHandler(self):
+        def snarf(packet):
+            try:
+                x=self.box.decrypt(packet[Raw].load)
+                decrypted = Ether(binascii.unhexlify(x))
+                sendp(decrypted, iface = self.args.snfnic, verbose = 0)
+            except Exception as E:
+                print(E)
+        return snarf
+
+
+    def wirelessHandler(self):
+        def snarf(packet):
+            try:
+                x=self.box.decrypt(packet[Raw].load)
+                decrypted = RadioTap(binascii.unhexlify(x))
+                sendp(decrypted, iface = self.args.snfnic, verbose = 0)
+            except Exception as E:
+                print(E)
+        return snarf
+
 
     def clientSniff(self):
         """Copy from the monitoring NIC and inject to the sniff NIC"""
-        if self.args.wired is False:
-            try:
-                sniff(iface = self.args.monnic,
-                      prn = lambda x: sendp(RadioTap(x[Raw].load),
-                                            iface = self.args.snfnic,
-                                            verbose = 0),
-                      lfilter = lambda y: y.haslayer(Raw),
-                      store = 0,
-                      filter = self.args.bpf)
-            except Exception as E:
-                print(E)
+        if args.wired is False:
+            PHANDLER = self.wirelessHandler()
         else:
-            try:
-                sniff(iface = self.args.monnic,
-                      prn = lambda x: sendp(Ether(x[Raw].load),
-                                            iface = self.args.snfnic,
-                                            verbose = 0),
-                      lfilter = lambda y: y.haslayer(Raw),
-                      store = 0,
-                      filter = self.args.bpf)
-            except Exception as E:
-                print(E)
+            PHANDLER = self.wiredHandler()
+        if self.args.weak is False:
+            if self.args.wired is False:
+                print('Sniffing wireless')
+                try:
+                    sniff(iface = self.args.monnic,
+                          prn = PHANDLER,
+                          lfilter = lambda y: y.haslayer(Raw),
+                          store = 0,
+                          filter = self.args.bpf)
+                except Exception as E:
+                    print(E)
+            else:
+                print('Sniffing wired')
+                try:
+                    sniff(iface = self.args.monnic,
+                          prn = PHANDLER,
+                          lfilter = lambda y: y.haslayer(Raw),
+                          store = 0,
+                          filter = self.args.bpf)
+                except Exception as E:
+                    print(E)
+        else:
+            if self.args.wired is False:
+                print('Sniffing wireless')
+                try:
+                    sniff(iface = self.args.monnic,
+                          prn = lambda x: sendp(RadioTap(x[Raw].load),
+                                                iface = self.args.snfnic,
+                                                verbose = 0),
+                          lfilter = lambda y: y.haslayer(Raw),
+                          store = 0,
+                          filter = self.args.bpf)
+                except Exception as E:
+                    print(E)
+            else:
+                print('Sniffing wired')
+                try:
+                    sniff(iface = self.args.monnic,
+                          prn = lambda x: sendp(Ether(x[Raw].load),
+                                                iface = self.args.snfnic,
+                                                verbose = 0),
+                          lfilter = lambda y: y.haslayer(Raw),
+                          store = 0,
+                          filter = self.args.bpf)
+                except Exception as E:
+                    print(E)
 
 
 def crtlC():
@@ -231,10 +293,14 @@ if __name__ == '__main__':
     parser.add_argument('--debug', action = 'store_true', help = 'client debug mode')
     parser.add_argument('--dstport', help = 'destination port', required = True)
     parser.add_argument('--dstip', help = 'destination ip', required = True)
+    parser.add_argument('--key', help = 'key')
     parser.add_argument('--monnic', help = 'monitoring nic', required = True)
+    parser.add_argument('--password', help = 'password')
     parser.add_argument('--repeater', action = 'store_true', help = 'Setup the repeater for tap mode')
+    parser.add_argument('--salt', help = 'salt')
     parser.add_argument('--snfnic', help = 'sniffing nic')
     parser.add_argument('--stager', action = 'store_true', help = 'Setup the stager for tap mode')
+    parser.add_argument('--weak', action = 'store_true', help = 'Run without encryption')
     parser.add_argument('--wired', action = 'store_true', help = 'wired mode, requires -t')
     parser.add_argument('-c', action = 'store_true', help = 'run as client')
     parser.add_argument('-s', action = 'store_true', help = 'run as server')
@@ -244,6 +310,41 @@ if __name__ == '__main__':
     ## ADD SIGNAL HANDLER
     signal_handler = crtlC()
     signal.signal(signal.SIGINT, signal_handler)
+
+    ## Encryption by default
+    if args.weak is False:
+
+        ## Minimum requirement
+        if args.password is None:
+            print('--password required without --weak')
+            sys.exit(1)
+
+        ## Encode the password
+        password = args.password.encode('utf-8')
+
+        ## salt
+        if args.salt is None:
+            salt_size = nacl.pwhash.argon2i.SALTBYTES
+            salt = nacl.utils.random(salt_size)
+            input('Random salt: ' + base64.b64encode(salt).decode('ascii') + '\nPress enter to continue')
+        else:
+            salt = base64.b64decode(args.salt)
+
+        ## key
+        if args.key is None:
+            kdf = nacl.pwhash.argon2i.kdf
+            key = kdf(nacl.secret.SecretBox.KEY_SIZE, password, salt)
+            input('Derived key: ' + base64.b64encode(key).decode('ascii') + '\nPress enter to continue')
+        else:
+            key = base64.b64decode(args.key)
+
+        ## Create the box
+        box = nacl.secret.SecretBox(key)
+
+    ## No encryption
+    else:
+        box = None
+        print('Running in weak mode')
 
     ## Raw BPF
     if args.bpf is None:
@@ -258,16 +359,7 @@ if __name__ == '__main__':
 
     ## Tap mode
     if args.t is True:
-        from easyThread import Backgrounder as LISTENER
-        from easyThread import Backgrounder as LISTENERII
-        from easyThread import EasyThread as LRET
-        from easyThread import Backgrounder as STAGER
-        from easyThread import Backgrounder as STAGERII
-        from easyThread import EasyThread as SRET
-        from easyThread import Backgrounder as REPEATER
-        from easyThread import Backgrounder as REPEATERII
-        from easyThread import EasyThread as RRET
-        from pyDot11 import *
+        print('Running in tap mode')
         Tap()
         subprocess.check_call('ifconfig tap0 up', shell = True)
         time.sleep(2)
@@ -319,18 +411,33 @@ if __name__ == '__main__':
 
     ## Server
     if args.s is True:
-        sniff(iface = args.monnic,
-              prn = lambda x: send(IP(dst = args.dstip)/\
-                                   UDP(sport = random.randint(0, 65535), dport = int(args.dstport))/\
-                                   Raw(load = x),
-                                   verbose = 0),
-              store = 0,
-              lfilter = lambda y: y.summary(),
-              filter = args.bpf)
+        print('Running in server mode')
+        if args.wired is False:
+            print('Serving wireless')
+        else:
+            print('Serving wired')
+        if args.weak is False:
+            sniff(iface = args.monnic,
+                  prn = lambda x: send(IP(dst = args.dstip)/\
+                                       UDP(sport = random.randint(0, 65535), dport = int(args.dstport))/\
+                                       Raw(load = box.encrypt(hexstr(x, onlyhex = 1).replace(' ', '').encode('utf-8'))),
+                                       verbose = 0),
+                  store = 0,
+                  lfilter = lambda y: y.summary(),
+                  filter = args.bpf)
+        else:
+            sniff(iface = args.monnic,
+                  prn = lambda x: send(IP(dst = args.dstip)/\
+                                       UDP(sport = random.randint(0, 65535), dport = int(args.dstport))/\
+                                       Raw(load = x),
+                                       verbose = 0),
+                  store = 0,
+                  lfilter = lambda y: y.summary(),
+                  filter = args.bpf)
 
     ## Client
     if args.c is True:
-
+        print('Running in client mode')
         if args.snfnic is None:
             print('--snfnic required with -c')
             sys.exit(1)
@@ -343,7 +450,7 @@ if __name__ == '__main__':
             time.sleep(3)
 
         ## Background virtual sniffing
-        sh = Shared(args)
+        sh = Shared(args, box)
         Backgrounder.theThread = sh.clientSniff
         bg = Backgrounder()
         bg.easyLaunch()
