@@ -1,17 +1,13 @@
 # Remote Interface Controller Protocol
-A protocol to transport the raw 0s and 1s of any interface via UDP.
+A protocol model for transporting the raw 0s and 1s of any interface on a given node via UDP to another node in such a way that the other node sees the traffic as local.
 
-RICP serves the user a model where the client can receive from one device, while the server may send and interact with many clients along with multiple interfaces acting as inputs to the various clients.
-
-The traffic sent back and forth between the server and client are represented to the client and server as a native interface such as eth0 or wlan0mon where the user is able to launch common programs such as Airodump-ng or Kismet via the same methods they are accustomed; the only difference is that UDP transports the input or output of the device and ultimately the control of the device to a user who may or may not be within the same broadcast domain or even close to the same physical user as the other participant within the protocol.
+The traffic sent back and forth between the server and client are represented to the client and server as a native interface such as eth0, wlan0mon, tap and so on.  The user is able to launch common programs such as Airodump-ng or Kismet via the same methods they are accustomed when physically present.
 
 ## Security
 RICP utilizes the [PyNaCl library](https://pynacl.readthedocs.io/en/latest/) for security.  At a minimum --password must be invoked by default with --salt and --key being optional.  To disable security for RICP invoke the --weak flag.
 
 ## Trust
 Users of this protocol should take measures to ensure they are receiving traffic only from trusted sources.  They should also take the time to ensure if and when running in server mode that a good filtering of the expected input from users is appropriately vetted for the syntax.
-
-Running as root is explicitly discouraged unless you trust both the inputs and outputs created by this protocol.  A review of the applicable firewall rules in place is highly encouraged prior to deployment of RICP.
 
 ### Create the environment
 ```
