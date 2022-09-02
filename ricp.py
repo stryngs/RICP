@@ -36,14 +36,9 @@ class Handler(object):
     def __init__(self, args):
         self.args = args
         if self.args.dstport is None:
-            self.args.dstport = random.randint(0, 65534)
+            self.args.dstport = random.randint(0, 65535)
         if self.args.dstip is None:
             self.args.dstip = '127.0.0.1'
-        # if self.args.srcport is None:
-        # self.args.srcport = random.randint(0, 65534)
-        # if self.args.srcip is None:
-        #     self.args.srcip = '127.0.0.1'
-
         # self.injSocket = conf.L2socket(iface = interface)
         # self.injSocket = conf.L3socket(iface = interface)
 
@@ -185,18 +180,23 @@ class Shared(object):
     def clientSniff(self):
         """Copy from the monitoring NIC and inject to the sniff NIC"""
         if self.args.wired is False:
-            sniff(iface = self.args.monnic,
-                  prn = lambda x: x.haslayer(Raw) and sendp(RadioTap(x[Raw].load),
-                                  iface = self.args.snfnic,
-                                  verbose = 0),
-                  store = 0,
-                  filter = self.args.bpf)
+            try:
+                sniff(iface = self.args.monnic,
+                      prn = lambda x: sendp(RadioTap(x[Raw].load),
+                                            iface = self.args.snfnic,
+                                            verbose = 0),
+                      lfilter = lambda y: y.haslayer(Raw),
+                      store = 0,
+                      filter = self.args.bpf)
+            except Exception as E:
+                print(E)
         else:
             try:
                 sniff(iface = self.args.monnic,
-                      prn = lambda x: x.haslayer(Raw) and sendp(Ether(x[Raw].load),
-                                      iface = self.args.snfnic,
-                                      verbose = 0),
+                      prn = lambda x: sendp(Ether(x[Raw].load),
+                                            iface = self.args.snfnic,
+                                            verbose = 0),
+                      lfilter = lambda y: y.haslayer(Raw),
                       store = 0,
                       filter = self.args.bpf)
             except Exception as E:
@@ -234,9 +234,6 @@ if __name__ == '__main__':
     parser.add_argument('--monnic', help = 'monitoring nic', required = True)
     parser.add_argument('--repeater', action = 'store_true', help = 'Setup the repeater for tap mode')
     parser.add_argument('--snfnic', help = 'sniffing nic')
-    parser.add_argument('--srcmac', help = 'source mac')
-    # parser.add_argument('--srcport', help = 'source port', required = True)
-    # parser.add_argument('--srcip', help = 'source ip', required = True)
     parser.add_argument('--stager', action = 'store_true', help = 'Setup the stager for tap mode')
     parser.add_argument('--wired', action = 'store_true', help = 'wired mode, requires -t')
     parser.add_argument('-c', action = 'store_true', help = 'run as client')
@@ -247,6 +244,11 @@ if __name__ == '__main__':
     ## ADD SIGNAL HANDLER
     signal_handler = crtlC()
     signal.signal(signal.SIGINT, signal_handler)
+
+    ## Raw BPF
+    if args.bpf is None:
+        if args.c is True:
+            args.bpf = 'udp port {0} and host {1}'.format(args.dstport, args.dstip)
 
     ## Tap constraints
     if args.t is False:
@@ -315,20 +317,11 @@ if __name__ == '__main__':
             time.sleep(2)
             sendp(Ether(IP()/TCP()), iface = 'tap2', count = 2)
 
-
-    ## Raw BPF
-    if args.bpf is None:
-        if args.c is True:
-
-            ### Clean this up more
-            # args.bpf = 'udp port {0} and ((src {1} and dst {2}) or (dst {1} and src {2}))'.format(args.srcport, args.srcip, args.dstip)
-            args.bpf = 'udp port {0} and host {1}'.format(args.dstport, args.dstip)
-
     ## Server
     if args.s is True:
         sniff(iface = args.monnic,
               prn = lambda x: send(IP(dst = args.dstip)/\
-                                   UDP(sport = random.randint(0, 65534), dport = int(args.dstport))/\
+                                   UDP(sport = random.randint(0, 65535), dport = int(args.dstport))/\
                                    Raw(load = x),
                                    verbose = 0),
               store = 0,
@@ -343,10 +336,11 @@ if __name__ == '__main__':
             sys.exit(1)
 
         ## Create virtual wlan device
-        os.system('modprobe mac80211_hwsim radios=1 > /dev/null')
-        time.sleep(2)
-        os.system('airmon-ng start {0} > /dev/null'.format(args.snfnic.replace('mon', '')))
-        time.sleep(3)
+        if args.wired is False:
+            os.system('modprobe mac80211_hwsim radios=1 > /dev/null')
+            time.sleep(2)
+            os.system('airmon-ng start {0} > /dev/null'.format(args.snfnic.replace('mon', '')))
+            time.sleep(3)
 
         ## Background virtual sniffing
         sh = Shared(args)
