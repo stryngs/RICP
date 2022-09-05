@@ -1,3 +1,14 @@
+## With the bi-directional concept working now it is time to focus on presenting the bytes as needed.  byteRip() should solve this issue.  The syntax for monitor mode testing is:
+python3 ./ricp.py --dstport 65535 --dstip 192.168.200.106 -c --monnic wlan0 --snfnic wlan1mon --weak --hybip 192.168.200.254 --hybport 65534 -t --stager --hybnic tap1
+python3 ./ricp.py --monnic wlan1mon --dstport 65535 --dstip 192.168.200.106 --weak -s -t --hybip 192.168.200.254 --hybport 65534 --snfnic wlan0 --hybnic tap0
+
+sendp() to tap1 from client and the server receives on 65534
+
+The next steps are to isolate stager and collapse listener/repeater must haves from a tap perspective into.  From there byteRip() time.
+
+
+
+### Solved on 5 September 2022:  It seems that tap(x) doesn't see tap(y) but all wlanmon(x) see all wlanmon(y) and so with tap usage this is avoided and it works.
 ## The below bug comes from the end of client mode which breaks the bi-directional pipe concept
         ## Explanation of the kernel issue where duplicates occur, wlan3mon also
         """
